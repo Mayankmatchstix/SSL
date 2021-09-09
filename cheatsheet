@@ -1,0 +1,138 @@
+Show all SSL certs sent by the server (Intermediate/Root)
+# openssl s_client -showcerts -connect <fqdn>:<port>
+
+Verify certs against CA Certificate (PEM file)
+# openssl s_client -CAfile /opt/cloudera/security/CAcerts/root.pem -showcerts -connect
+
+Dump Certificates and Certificate Meta
+# echo | openssl s_client -connect master-1.lab.atx.cloudera.com:50470 2>/dev/null | openssl x509 -noout -text
+
+Test Certs using Keytool
+# openssl s_client -verify 100 -showcerts -CAfile <(keytool -list -rfc -keystore /opt/cloudera/security/jks/truststore.jks -storepass <password>) -connect keytrustee_kms_host:16000
+
+Dump Specific Certificate Metadata (Expiration and CN)
+# echo | openssl s_client -connect master-1.lab.atx.cloudera.com:50470 2>/dev/null | openssl x509 -noout  -subject -dates
+
+Verify Certificate, Key, and CSR content match.
+openssl pkey -in privateKey.key -pubout -outform pem | sha256sum 
+openssl x509 -in certificate.crt -pubkey -noout -outform pem | sha256sum 
+openssl req -in CSR.csr -pubkey -noout -outform pem | sha256sum
+
+Known S3 Guard with HSM Problem
+https://csh.cloudera.com/ccs/index.html#/case/222524/case-details
+
+
++++++++++++
+export HADOOP_OPTS="-Djavax.net.debug=ssl" or -Djavax.net.debug=all
+export HADOOP_CLIENT_OPTS="-Djavax.net.debug=all"
+
+JVMFLAGS="-Djavax.net.debug=ssl"
+
+-Djavax.net.debug=ssl:handshake:verbose
+
+CSD_JAVA_OPTS Can append options.
+
+++++++++++++
+
+1} Import Certificate from server
+
+#echo -n | openssl s_client -connect <knox_host>:<knox_port> | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /tmp/`hostname -f`.pem
+
+ 
+
+2} List keystore
+
+keytool -list -v -keystore keystore.jks
+
+ 
+
+3}Keytool commands:-
+
+https://www.sslshopper.com/article-most-common-java-keytool-keystore-commands.html
+
+ 
+
+4}feed keytool output to openssl
+
+openssl s_client -verify 100 -showcerts  <(keytool -list -rfc -keystore truststore.jks -storepass changeit) -connect <knox_host>:8443
+
+ 
+
+5} combine certificate and private key (CA certs, replace)
+
+$openssl pkcs12 -export -out newcertbundle.pfx -inkey myprivate.key -in newcertfile.crt
+
+ 
+
+6} import p12  to new jks.
+
+keytool -importkeystore -srckeystore /tmp/hostname.p12 -srcstoretype PKCS12 \  -srcstorepass password -alias hostname -deststorepass password  -destkeypass password -destkeystore /opt/cloudera/security/jks/hostname-keystore.jks
+
+ 
+
+7} verify the certificate of CM server
+
+openssl s_client -connect <CM>:7182 -CAfile <path-to-ca.pem>
+
+ 
+
+ 
+
+8} list cert
+
+openssl x509 -text -noout -in <path-to-ca.pem>
+
+ 
+
+9} Change alias
+
+keytool -changealias -alias "current_alias" -destalias "new_alias" -keystore keystore_name
+
+ 
+
+10} verify md5 of cert and private key
+
+openssl x509 -noout -modulus -in cert.crt | openssl md5
+
+ 
+
+openssl rsa -noout -modulus -in privkey.txt | openssl md5
+
+ 
+
+11} verify protocol
+
+openssl s_client -connect `hostname -f`:<port> -ssl3, -tls1_2
+
+ 
+
+12} export from keystore
+
+keytool -export -alias rangeradmin -keystore /etc/ranger/admin/conf/ranger-admin-keystore.jks  -rfc -file ranger_admin.cert
+
+ 
+
+13} import to keystore
+
+keytool -import -alias gateway-identity  -file gateway_identity.crt -keystore /etc/ranger/admin/conf/ranger-admin-keystore.jks
+
+ 
+
+14} check keys password and keystore password
+
+keytool -keypasswd -keystore keystore.jks -alias <alias_name>
+
+ 
+
+15} cipher checks
+
+nmap -sV --script +ssl-enum-ciphers -p $(port) $(hostname -f)
+
+ 
+
+ 
+
+ 
+
+ 
+
